@@ -83,30 +83,37 @@ macro_rules! impl_simd_type {
     )+};
     (int $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl $name<[$t; $n]> {
+            #[inline]
             fn map(self, f: impl Fn($t) -> $t) -> Self {
                 Self(array_utils::map(self.0, f))
             }
 
+            #[inline]
             pub fn wrapping_add(self, other: Self) -> Self {
                 self.zip(other, <$t>::wrapping_add)
             }
 
+            #[inline]
             pub fn saturating_add(self, other: Self) -> Self {
                 self.zip(other, <$t>::saturating_add)
             }
 
+            #[inline]
             pub fn wrapping_sub(self, other: Self) -> Self {
                 self.zip(other, <$t>::wrapping_sub)
             }
 
+            #[inline]
             pub fn saturating_sub(self, other: Self) -> Self {
                 self.zip(other, <$t>::saturating_sub)
             }
 
+            #[inline]
             pub fn count_ones(self) -> Self {
                 self.map(|a| <$t>::count_ones(a) as $t)
             }
 
+            #[inline]
             pub fn count_zeros(self) -> Self {
                 self.map(|a| <$t>::count_zeros(a) as $t)
             }
@@ -115,10 +122,12 @@ macro_rules! impl_simd_type {
     };
     (float $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl $name<[$t; $n]> {
+            #[inline]
             pub fn add(self, other: Self) -> Self {
                 self.zip(other, ops::Add::add)
             }
 
+            #[inline]
             pub fn sub(self, other: Self) -> Self {
                 self.zip(other, ops::Sub::sub)
             }
@@ -134,32 +143,38 @@ macro_rules! impl_simd_type {
             type Vector = $name<[$t; $n]>;
         }
         impl $name<[$t; $n]> {
+            #[inline]
             fn zip(self, other: Self, f: impl Fn($t, $t) -> $t) -> Self {
                 Self(array_utils::zip(self.0, other.0, f))
             }
 
+            #[inline]
             pub fn splat(value: $t) -> Self {
                 Self([value; $n])
             }
         }
 
         impl Default for $name<[$t; $n]> {
+            #[inline]
             fn default() -> Self { Self::splat(Default::default()) }
         }
 
         impl fmt::Debug for $name<[$t; $n]> {
+            #[inline]
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{:?}", &self.0[..])
+                <[$t] as fmt::Debug>::fmt(&**self, f)
             }
         }
 
         impl From<[$t; $n]> for $name<[$t; $n]> {
+            #[inline]
             fn from(other: [$t; $n]) -> Self {
                 Self(other)
             }
         }
 
         impl From<$name<[$t; $n]>> for [$t; $n] {
+            #[inline]
             fn from(other: $name<[$t; $n]>) -> Self {
                 other.0
             }
@@ -175,11 +190,13 @@ macro_rules! define_simd_types {
         impl_simd_type!($name $size_align);
         impl<TArray> ops::Deref for $name<TArray> {
             type Target = TArray;
+            #[inline]
             fn deref(&self) -> &TArray {
                 &self.0
             }
         }
         impl<TArray> ops::DerefMut for $name<TArray> {
+            #[inline]
             fn deref_mut(&mut self) -> &mut TArray {
                 &mut self.0
             }

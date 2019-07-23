@@ -1,3 +1,4 @@
+#[inline]
 pub fn zip<S, T, U, R, F>(a: T, b: U, f: F) -> R
 where
     T: Array<OfUnit = S>,
@@ -20,6 +21,7 @@ where
     r
 }
 
+#[inline]
 pub fn map<S, T, R, F>(a: T, f: F) -> R
 where
     T: Array<OfUnit = S>,
@@ -74,7 +76,9 @@ macro_rules! impl_array {
             type OfUnit = [(); $len];
             const LENGTH: usize = $len;
             const ZEROES: Self = [T::ZERO; $len];
+            #[inline]
             fn as_slice(&self) -> &[T] { self }
+            #[inline]
             fn as_mut_slice(&mut self) -> &mut [T] { self }
         }
     )+};
