@@ -1,0 +1,13 @@
+[package]
+name = "simd-trick"
+version = "0.1.0"
+authors = ["scottmcm"]
+edition = "2018"
+license = "MIT"
+description = "A crate to trick the optimizer into generating SIMD instructions."
+documentation = "https://docs.rs/simd-trick/"
+keywords = ["simd", "array", "no_std"]
+categories = ["no-std"]
+
+[dependencies]
+# none!
