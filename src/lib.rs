@@ -70,17 +70,22 @@ mod internals {
 
 macro_rules! impl_simd_type {
     ($name:ident $size_align:literal) => {
-        impl_simd_type!(int $name $size_align =>
-            i8 i16 i32 i64
-            u8 u16 u32 u64
-        );
-        impl_simd_type!(float $name $size_align =>
-            f32 f64
-        );
+        impl_simd_type!(sint $name $size_align => i8 i16 i32 i64);
+        impl_simd_type!(int $name $size_align => u8 u16 u32 u64);
+        impl_simd_type!(float $name $size_align => f32 f64);
     };
     ($k:ident $name:ident $size_align:literal => $($t:ident)+) => {$(
         impl_simd_type!($k $name $size_align => $t ($size_align / mem::size_of::<$t>()));
     )+};
+    (sint $name:ident $size_align:literal => $t:ident $n:expr) => {
+        impl $name<[$t; $n]> {
+            #[inline]
+            pub fn wrapping_abs(self) -> Self {
+                self.map(<$t>::wrapping_abs)
+            }
+        }
+        impl_simd_type!(int $name $size_align => $t $n);
+    };
     (int $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl $name<[$t; $n]> {
             #[inline]
