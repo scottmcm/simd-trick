@@ -44,19 +44,19 @@ where
 pub trait Zero {
     const ZERO: Self;
 }
-macro_rules! impl_const_default {
+macro_rules! impl_zero {
     ($zero:expr; $($t: ty)+) => {$(
         impl Zero for $t {
             const ZERO: $t = $zero;
         }
     )+};
 }
-impl_const_default!(
+impl_zero!(
     0;
     i8 i16 i32 i64
     u8 u16 u32 u64
 );
-impl_const_default!(
+impl_zero!(
     0.0;
     f32 f64
 );

@@ -44,8 +44,8 @@ pub type U32x16 = Simd<[u32; 16]>;
 
 pub type U64x1 = Simd<[u64; 1]>;
 pub type U64x2 = Simd<[u64; 2]>;
-pub type U64x3 = Simd<[u64; 4]>;
-pub type U64x4 = Simd<[u64; 8]>;
+pub type U64x4 = Simd<[u64; 4]>;
+pub type U64x8 = Simd<[u64; 8]>;
 
 pub type F32x2 = Simd<[f32; 2]>;
 pub type F32x4 = Simd<[f32; 4]>;
@@ -60,22 +60,116 @@ pub type F64x8 = Simd<[f64; 8]>;
 pub trait Vector {
     type Element;
     const LANES: usize;
+    type MaskVector: Vector;
 }
 
 mod internals {
     pub trait ToSimd {
         type Vector: super::Vector;
     }
+
+    pub trait ToMask {
+        type Mask;
+    }
+    macro_rules! impl_to_mask {
+        ($($m:ident : $($p:ident)+,)+) => {$($(
+            impl ToMask for $p {
+                type Mask = super::$m;
+            }
+        )+)+};
+    }
+    impl_to_mask!(
+        M8: u8 i8,
+        M16: u16 i16,
+        M32: u32 i32 f32,
+        M64: u64 i64 f64,
+    );
+}
+
+macro_rules! define_mask_types {
+    ($($t:ident $p:ident)+) => {$(
+        impl From<bool> for $t {
+            #[inline]
+            fn from(b: bool) -> Self {
+                if b { $t::True } else { $t::False }
+            }
+        }
+        impl From<$t> for bool {
+            #[inline]
+            fn from(m: $t) -> bool {
+                match m {
+                    $t::False => false,
+                    $t::True => true,
+                }
+            }
+        }
+        impl From<$t> for $p {
+            #[inline]
+            fn from(m: $t) -> $p {
+                m as $p
+            }
+        }
+        impl Default for $t {
+            #[inline]
+            fn default() -> Self { $t::False }
+        }
+        impl array_utils::Zero for $t {
+            const ZERO: Self = $t::False;
+        }
+        impl ops::Not for $t {
+            type Output = Self;
+            #[inline]
+            fn not(self) -> Self {
+                (!bool::from(self)).into()
+            }
+        }
+        #[repr($p)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum $t {
+            False = (0 as $p),
+            True = !(0 as $p),
+        }
+    )+};
+}
+define_mask_types!(
+    M8 u8
+    M16 u16
+    M32 u32
+    M64 u64
+);
+
+macro_rules! forward_ops_as_zip {
+    ($t:ty => $($tr:ident $m:ident)+) => {$(
+        impl ops::$tr for $t {
+            type Output = Self;
+            #[inline]
+            fn $m(self, other: Self) -> Self {
+                self.zip(other, ops::$tr::$m)
+            }
+        }
+    )+};
+}
+
+macro_rules! forward_ops_as_map {
+    ($t:ty => $($tr:ident $m:ident)+) => {$(
+        impl ops::$tr for $t {
+            type Output = Self;
+            #[inline]
+            fn $m(self) -> Self {
+                self.map(ops::$tr::$m)
+            }
+        }
+    )+};
 }
 
 macro_rules! impl_simd_type {
     ($name:ident $size_align:literal) => {
         impl_simd_type!(sint $name $size_align => i8 i16 i32 i64);
-        impl_simd_type!(int $name $size_align => u8 u16 u32 u64);
+        impl_simd_type!(uint $name $size_align => u8 u16 u32 u64);
         impl_simd_type!(float $name $size_align => f32 f64);
     };
     ($k:ident $name:ident $size_align:literal => $($t:ident)+) => {$(
-        impl_simd_type!($k $name $size_align => $t ($size_align / mem::size_of::<$t>()));
+        impl_simd_type!($k $name $size_align => $t ($size_align as usize / mem::size_of::<$t>()));
     )+};
     (sint $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl $name<[$t; $n]> {
@@ -86,13 +180,22 @@ macro_rules! impl_simd_type {
         }
         impl_simd_type!(int $name $size_align => $t $n);
     };
+    (uint $name:ident $size_align:literal => $t:ident $n:expr) => {
+        impl Vector for $name<[<$t as internals::ToMask>::Mask; $n]> {
+            type Element = <$t as internals::ToMask>::Mask;
+            const LANES: usize = $n;
+            type MaskVector = Self;
+        }
+        impl From<$name<[<$t as internals::ToMask>::Mask; $n]>> for $name<[$t; $n]> {
+            #[inline]
+            fn from(m: $name<[<$t as internals::ToMask>::Mask; $n]>) -> Self {
+                Self(array_utils::map(m.0, Into::into))
+            }
+        }
+        impl_simd_type!(int $name $size_align => $t $n);
+    };
     (int $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl $name<[$t; $n]> {
-            #[inline]
-            fn map(self, f: impl Fn($t) -> $t) -> Self {
-                Self(array_utils::map(self.0, f))
-            }
-
             #[inline]
             pub fn wrapping_add(self, other: Self) -> Self {
                 self.zip(other, <$t>::wrapping_add)
@@ -122,27 +225,68 @@ macro_rules! impl_simd_type {
             pub fn count_zeros(self) -> Self {
                 self.map(|a| <$t>::count_zeros(a) as $t)
             }
+
+            #[inline]
+            pub fn max(self, other: Self) -> Self {
+                self.zip(other, Ord::max)
+            }
+
+            #[inline]
+            pub fn min(self, other: Self) -> Self {
+                self.zip(other, Ord::min)
+            }
         }
         impl_simd_type!(common $name $size_align => $t $n);
+        forward_ops_as_zip!($name<[$t; $n]> =>
+            BitAnd bitand
+            BitOr bitor
+            BitXor bitxor
+        );
+        forward_ops_as_map!($name<[$t; $n]> =>
+            Not not
+        );
     };
     (float $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl $name<[$t; $n]> {
             #[inline]
-            pub fn add(self, other: Self) -> Self {
-                self.zip(other, ops::Add::add)
+            pub fn recip(self) -> Self {
+                self.map(<$t>::recip)
             }
 
             #[inline]
-            pub fn sub(self, other: Self) -> Self {
-                self.zip(other, ops::Sub::sub)
+            pub fn to_degrees(self) -> Self {
+                self.map(<$t>::to_degrees)
+            }
+
+            #[inline]
+            pub fn to_radians(self) -> Self {
+                self.map(<$t>::to_radians)
+            }
+
+            #[inline]
+            pub fn max_naive(self, other: Self) -> Self {
+                self.zip(other, |x, y| if x > y { x } else { y })
+            }
+
+            #[inline]
+            pub fn min_naive(self, other: Self) -> Self {
+                self.zip(other, |x, y| if x > y { y } else { x })
             }
         }
         impl_simd_type!(common $name $size_align => $t $n);
+        forward_ops_as_zip!($name<[$t; $n]> =>
+            Add add
+            Sub sub
+            Mul mul
+            Div div
+            Rem rem
+        );
     };
     (common $name:ident $size_align:literal => $t:ident $n:expr) => {
         impl Vector for $name<[$t; $n]> {
             type Element = $t;
             const LANES: usize = $n;
+            type MaskVector = $name<[<$t as internals::ToMask>::Mask; $n]>;
         }
         impl internals::ToSimd for [$t; $n] {
             type Vector = $name<[$t; $n]>;
@@ -154,8 +298,43 @@ macro_rules! impl_simd_type {
             }
 
             #[inline]
+            fn map(self, f: impl Fn($t) -> $t) -> Self {
+                Self(array_utils::map(self.0, f))
+            }
+
+            #[inline]
             pub fn splat(value: $t) -> Self {
                 Self([value; $n])
+            }
+
+            #[inline]
+            pub fn eq(self, other: Self) -> <Self as Vector>::MaskVector {
+                $name(array_utils::zip(self.0, other.0, |a, b| (a == b).into()))
+            }
+
+            #[inline]
+            pub fn ne(self, other: Self) -> <Self as Vector>::MaskVector {
+                $name(array_utils::zip(self.0, other.0, |a, b| (a != b).into()))
+            }
+
+            #[inline]
+            pub fn lt(self, other: Self) -> <Self as Vector>::MaskVector {
+                $name(array_utils::zip(self.0, other.0, |a, b| (a < b).into()))
+            }
+
+            #[inline]
+            pub fn gt(self, other: Self) -> <Self as Vector>::MaskVector {
+                $name(array_utils::zip(self.0, other.0, |a, b| (a > b).into()))
+            }
+
+            #[inline]
+            pub fn le(self, other: Self) -> <Self as Vector>::MaskVector {
+                $name(array_utils::zip(self.0, other.0, |a, b| (a <= b).into()))
+            }
+
+            #[inline]
+            pub fn ge(self, other: Self) -> <Self as Vector>::MaskVector {
+                $name(array_utils::zip(self.0, other.0, |a, b| (a >= b).into()))
             }
         }
 
