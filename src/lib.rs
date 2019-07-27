@@ -57,6 +57,26 @@ pub type F64x2 = Simd<[f64; 2]>;
 pub type F64x4 = Simd<[f64; 4]>;
 pub type F64x8 = Simd<[f64; 8]>;
 
+pub type M8x8 = Simd<[M8; 8]>;
+pub type M8x16 = Simd<[M8; 16]>;
+pub type M8x32 = Simd<[M8; 32]>;
+pub type M8x64 = Simd<[M8; 64]>;
+
+pub type M16x4 = Simd<[M16; 4]>;
+pub type M16x8 = Simd<[M16; 8]>;
+pub type M16x16 = Simd<[M16; 16]>;
+pub type M16x32 = Simd<[M16; 32]>;
+
+pub type M32x2 = Simd<[M32; 2]>;
+pub type M32x4 = Simd<[M32; 4]>;
+pub type M32x8 = Simd<[M32; 8]>;
+pub type M32x16 = Simd<[M32; 16]>;
+
+pub type M64x1 = Simd<[M64; 1]>;
+pub type M64x2 = Simd<[M64; 2]>;
+pub type M64x4 = Simd<[M64; 4]>;
+pub type M64x8 = Simd<[M64; 8]>;
+
 pub trait Vector {
     type Element;
     const LANES: usize;
@@ -186,6 +206,9 @@ macro_rules! impl_simd_type {
             const LANES: usize = $n;
             type MaskVector = Self;
         }
+        impl internals::ToSimd for [<$t as internals::ToMask>::Mask; $n] {
+            type Vector = $name<[<$t as internals::ToMask>::Mask; $n]>;
+        }
         impl From<$name<[<$t as internals::ToMask>::Mask; $n]>> for $name<[$t; $n]> {
             #[inline]
             fn from(m: $name<[<$t as internals::ToMask>::Mask; $n]>) -> Self {
@@ -214,6 +237,16 @@ macro_rules! impl_simd_type {
             #[inline]
             pub fn saturating_sub(self, other: Self) -> Self {
                 self.zip(other, <$t>::saturating_sub)
+            }
+
+            #[inline]
+            pub fn wrapping_mul(self, other: Self) -> Self {
+                self.zip(other, <$t>::wrapping_mul)
+            }
+
+            #[inline]
+            pub fn high_mul(self, other: Self) -> Self {
+                self.zip(other, HighMul::high_mul)
             }
 
             #[inline]
@@ -393,6 +426,32 @@ define_simd_types!(
     Simd128 16;
     Simd256 32;
     Simd512 64;
+);
+
+trait HighMul {
+    fn high_mul(self, other: Self) -> Self;
+}
+macro_rules! impl_high_mul {
+    ($($t:ident $t2:ident)+) => {$(
+        impl HighMul for $t {
+            #[inline]
+            fn high_mul(self, other: Self) -> Self {
+                let wide = (self as $t2) * (other as $t2);
+                let high = wide >> (mem::size_of::<$t>() * 8);
+                high as $t
+            }
+        }
+    )+};
+}
+impl_high_mul!(
+    u8 u16
+    u16 u32
+    u32 u64
+    u64 u128
+    i8 i16
+    i16 i32
+    i32 i64
+    i64 i128
 );
 
 mod array_utils;
